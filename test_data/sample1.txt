@@ -1,0 +1,10 @@
+This is a sample text file for testing the File Extractor application.
+
+Features being tested:
+1. File upload
+2. Archive extraction
+3. Progress tracking
+4. File listing
+5. File preview
+
+You can view this file in the browser after extracting the test archive!

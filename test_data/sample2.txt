@@ -1,0 +1,10 @@
+Another sample file with some code:
+
+def hello_world():
+    print("Hello from the File Extractor!")
+    return True
+
+# This file demonstrates:
+# - Text file reading
+# - Code syntax display
+# - File preview functionality

@@ -1,0 +1,6 @@
+This file is in a subdirectory!
+
+It demonstrates:
+- Directory structure preservation
+- Nested file extraction
+- Path handling
