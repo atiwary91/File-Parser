@@ -4,6 +4,28 @@ let currentJobId = null;
 let currentPage = 1;
 const itemsPerPage = 50;
 
+// Configuration loaded from backend
+let appConfig = {
+    extractFolder: null,
+    analysisServiceUrl: 'http://localhost:8001'
+};
+
+// Load configuration from backend
+async function loadConfig() {
+    try {
+        const response = await fetch('/api/config');
+        if (response.ok) {
+            appConfig = await response.json();
+            console.log('Loaded configuration:', appConfig);
+        }
+    } catch (error) {
+        console.error('Failed to load configuration:', error);
+    }
+}
+
+// Initialize app - load config first
+loadConfig();
+
 // DOM Elements
 const uploadArea = document.getElementById('uploadArea');
 const fileInput = document.getElementById('fileInput');
@@ -559,7 +581,6 @@ document.getElementById('searchInput')?.addEventListener('keypress', (e) => {
 // RHOSO Test Results Tab Functionality
 // ============================================
 
-const ANALYSIS_SERVICE_URL = 'http://localhost:8001';
 let rhosoFolders = [];
 let currentTestFolder = null;
 let currentTestResults = null;
@@ -569,10 +590,10 @@ let chatHistory = [];
 async function discoverRHOSOFolders() {
     if (!currentJobId) return;
 
-    const extractPath = `/home/atiwary/test/Cursor_testing/Ai-assisted_RHOSO_result_parser/File-Parser/extracted/${currentJobId}`;
+    const extractPath = `${appConfig.extractFolder}/${currentJobId}`;
 
     try {
-        const response = await fetch(`${ANALYSIS_SERVICE_URL}/api/analysis/discover`, {
+        const response = await fetch(`${appConfig.analysisServiceUrl}/api/analysis/discover`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -644,10 +665,10 @@ async function loadTestResults(folderPath, folderName) {
     document.getElementById('aiChatSection').style.display = 'none';
     chatHistory = [];
 
-    const extractPath = `/home/atiwary/test/Cursor_testing/Ai-assisted_RHOSO_result_parser/File-Parser/extracted/${currentJobId}`;
+    const extractPath = `${appConfig.extractFolder}/${currentJobId}`;
 
     try {
-        const response = await fetch(`${ANALYSIS_SERVICE_URL}/api/analysis/parse`, {
+        const response = await fetch(`${appConfig.analysisServiceUrl}/api/analysis/parse`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -949,11 +970,11 @@ async function startAIAnalysis() {
     resultDiv.style.display = 'block';
     resultDiv.innerHTML = '<div class="analysis-streaming">Starting AI analysis...</div>';
 
-    const extractPath = `/home/atiwary/test/Cursor_testing/Ai-assisted_RHOSO_result_parser/File-Parser/extracted/${currentJobId}`;
+    const extractPath = `${appConfig.extractFolder}/${currentJobId}`;
 
     try {
-        console.log('Sending analysis request to:', `${ANALYSIS_SERVICE_URL}/api/analysis/analyze`);
-        const response = await fetch(`${ANALYSIS_SERVICE_URL}/api/analysis/analyze`, {
+        console.log('Sending analysis request to:', `${appConfig.analysisServiceUrl}/api/analysis/analyze`);
+        const response = await fetch(`${appConfig.analysisServiceUrl}/api/analysis/analyze`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -1019,7 +1040,7 @@ async function startAIAnalysis() {
 // Load available AI backends
 async function loadAvailableBackends() {
     try {
-        const response = await fetch(`${ANALYSIS_SERVICE_URL}/api/analysis/backends`);
+        const response = await fetch(`${appConfig.analysisServiceUrl}/api/analysis/backends`);
         const data = await response.json();
 
         const select = document.getElementById('aiBackend');
@@ -1097,11 +1118,11 @@ async function sendChatMessage() {
     messagesDiv.appendChild(assistantMsg);
     messagesDiv.scrollTop = messagesDiv.scrollHeight;
 
-    const extractPath = `/home/atiwary/test/Cursor_testing/Ai-assisted_RHOSO_result_parser/File-Parser/extracted/${currentJobId}`;
+    const extractPath = `${appConfig.extractFolder}/${currentJobId}`;
 
     try {
-        console.log('Sending chat request to:', `${ANALYSIS_SERVICE_URL}/api/analysis/chat`);
-        const response = await fetch(`${ANALYSIS_SERVICE_URL}/api/analysis/chat`, {
+        console.log('Sending chat request to:', `${appConfig.analysisServiceUrl}/api/analysis/chat`);
+        const response = await fetch(`${appConfig.analysisServiceUrl}/api/analysis/chat`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

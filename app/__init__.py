@@ -78,6 +78,23 @@ def register_blueprints(app):
         from flask import render_template
         return render_template('index.html')
 
+    # Config endpoint for frontend
+    @app.route('/api/config')
+    def get_config():
+        """Return configuration for frontend"""
+        import os
+        # Ensure absolute paths for frontend
+        extract_folder = settings.EXTRACT_FOLDER
+        if not os.path.isabs(extract_folder):
+            extract_folder = os.path.abspath(extract_folder)
+
+        return jsonify({
+            'extractFolder': extract_folder,
+            'analysisServiceUrl': settings.ANALYSIS_SERVICE_URL,
+            'enableAiAnalysis': settings.ENABLE_AI_ANALYSIS,
+            'maxUploadSize': settings.MAX_UPLOAD_SIZE
+        })
+
 
 def register_error_handlers(app):
     """Register error handlers"""
