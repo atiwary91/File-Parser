@@ -30,6 +30,7 @@ instance/
 # Application specific
 uploads/
 extracted/
+data/
 *.zip
 *.tar
 *.tar.gz
@@ -42,6 +43,9 @@ extracted/
 
 # Keep test archive for demo
 !test_archive.zip
+
+# Environment files
+.env
 
 # IDE
 .vscode/
