@@ -702,6 +702,55 @@ input[type="file"] {
     overflow-y: auto;
 }
 
+/* Sort Controls */
+.sort-controls {
+    display: flex;
+    align-items: center;
+}
+
+.sort-controls select {
+    padding: 8px 12px;
+    border-radius: 4px;
+    border: 1px solid #ddd;
+    background: white;
+    cursor: pointer;
+    font-size: 14px;
+    transition: border-color 0.3s;
+}
+
+.sort-controls select:hover {
+    border-color: #667eea;
+}
+
+.sort-controls select:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+/* Component Group Headers */
+.component-group-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 15px;
+    font-size: 18px;
+    font-weight: bold;
+    border-radius: 8px 8px 0 0;
+}
+
+.component-group-container {
+    margin-bottom: 25px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.component-group-content {
+    padding: 15px;
+    background: #fafafa;
+}
+
 .failure-ai-summary {
     background: #e8f5e9;
     border-left: 4px solid #4caf50;
@@ -1049,19 +1098,19 @@ input[type="file"] {
 }
 
 .test-results-table td:first-child {
+    font-weight: 600;
+    color: #667eea;
+    font-size: 0.9em;
+    white-space: nowrap;
+}
+
+.test-results-table td:nth-child(2) {
     font-family: 'Courier New', monospace;
     font-size: 0.85em;
     color: #333;
     font-weight: 500;
-    max-width: 500px;
+    max-width: 600px;
     word-wrap: break-word;
-}
-
-.test-results-table td:nth-child(3) {
-    max-width: 400px;
-    word-wrap: break-word;
-    font-size: 0.9em;
-    color: #555;
 }
 
 .status-badge {
@@ -1091,13 +1140,6 @@ input[type="file"] {
     border: 1px solid #d84315;
 }
 
-.duration-cell {
-    font-family: 'Courier New', monospace;
-    font-size: 0.85em;
-    color: #666;
-    white-space: nowrap;
-}
-
 .test-results-table tbody tr[data-status="failed"] {
     border-left: 4px solid #e74c3c;
 }
@@ -1112,6 +1154,39 @@ input[type="file"] {
 
 .test-results-table tbody tr.hidden {
     display: none;
+}
+
+/* Component column styling */
+.component-cell {
+    font-weight: 600;
+    color: #667eea;
+    font-size: 0.9em;
+    white-space: nowrap;
+}
+
+/* Component header row for grouped display */
+.component-header-row {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    border: none !important;
+}
+
+.component-header-row:hover {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+}
+
+.component-header {
+    color: white !important;
+    font-size: 1.05em;
+    padding: 12px 15px !important;
+    font-weight: 600;
+}
+
+.component-test-row {
+    background: #fafafa;
+}
+
+.component-test-row:hover {
+    background: #f0f0f0 !important;
 }
 
 /* ============================================

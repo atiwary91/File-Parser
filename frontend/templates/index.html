@@ -124,7 +124,17 @@
 
                     <!-- Test Failures List -->
                     <div class="failures-section">
-                        <h4>Test Failures</h4>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                            <h4 style="margin: 0;">Test Failures</h4>
+                            <div class="sort-controls">
+                                <label style="margin-right: 10px; font-weight: 600;">Sort by:</label>
+                                <select id="sortBySelect" onchange="sortTestResults()" style="padding: 8px 12px; border-radius: 4px; border: 1px solid #ddd; background: white; cursor: pointer;">
+                                    <option value="default">Default (All Tests)</option>
+                                    <option value="component">Component</option>
+                                    <option value="status">Status (Failed/Skipped)</option>
+                                </select>
+                            </div>
+                        </div>
                         <div id="failuresList" class="failures-list"></div>
                     </div>
 
@@ -152,31 +162,40 @@
             <div class="tab-content" id="tableViewTab">
                 <div class="table-view-header">
                     <h3 id="tableViewTitle">Test Results Table</h3>
-                    <div class="table-filters">
-                        <label>
-                            <input type="checkbox" id="filterFailed" checked onchange="filterTableResults()"> Failed
-                        </label>
-                        <label>
-                            <input type="checkbox" id="filterSkipped" checked onchange="filterTableResults()"> Skipped
-                        </label>
-                        <label>
-                            <input type="checkbox" id="filterErrors" checked onchange="filterTableResults()"> Errors
-                        </label>
+                    <div style="display: flex; gap: 20px; align-items: center;">
+                        <div class="sort-controls">
+                            <label style="margin-right: 10px; font-weight: 600;">Sort by:</label>
+                            <select id="tableSortBySelect" onchange="sortTableResults()" style="padding: 8px 12px; border-radius: 4px; border: 1px solid #ddd; background: white; cursor: pointer;">
+                                <option value="default">Default</option>
+                                <option value="component">Component</option>
+                                <option value="status">Status</option>
+                            </select>
+                        </div>
+                        <div class="table-filters">
+                            <label>
+                                <input type="checkbox" id="filterFailed" checked onchange="filterTableResults()"> Failed
+                            </label>
+                            <label>
+                                <input type="checkbox" id="filterSkipped" checked onchange="filterTableResults()"> Skipped
+                            </label>
+                            <label>
+                                <input type="checkbox" id="filterErrors" checked onchange="filterTableResults()"> Errors
+                            </label>
+                        </div>
                     </div>
                 </div>
                 <div class="table-container">
                     <table id="testResultsTable" class="test-results-table">
                         <thead>
                             <tr>
+                                <th>Component</th>
                                 <th>Test Path</th>
                                 <th>Status</th>
-                                <th>Error Message</th>
-                                <th>Duration</th>
                             </tr>
                         </thead>
                         <tbody id="testResultsTableBody">
                             <tr>
-                                <td colspan="4" class="loading">No test results loaded</td>
+                                <td colspan="3" class="loading">No test results loaded</td>
                             </tr>
                         </tbody>
                     </table>

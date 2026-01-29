@@ -1237,6 +1237,131 @@ function changePage(direction) {
     document.querySelector('.failures-section').scrollIntoView({ behavior: 'smooth' });
 }
 
+// Sort test results by component or status
+function sortTestResults() {
+    const sortBy = document.getElementById('sortBySelect').value;
+
+    if (sortBy === 'default') {
+        // Reset to original order (failures first, then skipped)
+        renderTestItemsPage();
+    } else if (sortBy === 'component') {
+        // Sort by component and render grouped
+        renderTestsByComponent();
+    } else if (sortBy === 'status') {
+        // Sort by status (failed first, then skipped)
+        const sorted = [...allTestItems].sort((a, b) => {
+            if (a.itemType === b.itemType) return 0;
+            return a.itemType === 'failure' ? -1 : 1;
+        });
+        allTestItems = sorted;
+        currentPage = 1;
+        renderTestItemsPage();
+    }
+}
+
+// Render test results grouped by component
+function renderTestsByComponent() {
+    const container = document.getElementById('failuresList');
+
+    // Group tests by component
+    const componentGroups = {};
+    allTestItems.forEach(item => {
+        const component = item.component || 'Unknown';
+        if (!componentGroups[component]) {
+            componentGroups[component] = [];
+        }
+        componentGroups[component].push(item);
+    });
+
+    // Sort component names alphabetically
+    const sortedComponents = Object.keys(componentGroups).sort();
+
+    let html = `
+        <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+            <strong>Grouped by Component</strong>
+            <span style="margin-left: 20px;">Total Components: ${sortedComponents.length}</span>
+            <span style="margin-left: 20px;">Total Items: ${allTestItems.length}</span>
+        </div>
+    `;
+
+    // Render each component group
+    sortedComponents.forEach(component => {
+        const items = componentGroups[component];
+        const failedCount = items.filter(i => i.itemType === 'failure').length;
+        const skippedCount = items.filter(i => i.itemType === 'skipped').length;
+
+        html += `
+            <div style="margin-bottom: 25px; border: 2px solid #e0e0e0; border-radius: 8px; overflow: hidden;">
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px; font-size: 18px; font-weight: bold;">
+                    📦 ${component}
+                    <span style="margin-left: 15px; font-size: 14px; font-weight: normal;">
+                        (${items.length} total: ${failedCount} failed, ${skippedCount} skipped)
+                    </span>
+                </div>
+                <div style="padding: 15px;">
+        `;
+
+        // Render each test in the component group
+        items.forEach((item, index) => {
+            const globalIndex = allTestItems.indexOf(item);
+            const itemId = `test-item-${globalIndex}`;
+            const isFailure = item.itemType === 'failure';
+            const bgColor = isFailure ? '#fff5f5' : '#fffef0';
+            const borderColor = isFailure ? '#dc3545' : '#ffc107';
+            const icon = isFailure ? '❌' : '⏭️';
+
+            html += `
+                <div class="failure-box" id="${itemId}" style="background: ${bgColor}; border-left: 4px solid ${borderColor}; margin-bottom: 10px;">
+                    <div class="failure-header" onclick="toggleFailure('${itemId}')">
+                        <div class="failure-title">
+                            ${icon} ${item.test_name || 'Unknown Test'}
+                        </div>
+                        <div class="failure-toggle">►</div>
+                    </div>
+                    <div class="failure-content">
+                        <div class="failure-info">
+                            <div class="failure-label">Class:</div>
+                            <div>${item.class_name || 'Unknown'}</div>
+                        </div>
+                        <div class="failure-info">
+                            <div class="failure-label">Type:</div>
+                            <div><span style="color: ${isFailure ? '#dc3545' : '#ffc107'}; font-weight: bold;">${isFailure ? 'FAILED' : 'SKIPPED'}</span></div>
+                        </div>
+                        ${isFailure && item.error_message ? `
+                            <div class="failure-error">
+                                <div class="failure-label">Error Message:</div>
+                                ${escapeHtml(item.error_message)}
+                            </div>
+                        ` : ''}
+                        ${isFailure && item.traceback ? `
+                            <div class="failure-info">
+                                <div class="failure-label">Traceback:</div>
+                                <div class="failure-traceback">${escapeHtml(item.traceback)}</div>
+                            </div>
+                        ` : ''}
+                        ${!isFailure && item.skip_reason ? `
+                            <div class="failure-info">
+                                <div class="failure-label">Skip Reason:</div>
+                                <div style="color: #666;">${escapeHtml(item.skip_reason)}</div>
+                            </div>
+                        ` : ''}
+                        <div class="failure-actions">
+                            <button class="btn btn-sm" onclick="askAIAboutFailure(${globalIndex})">💬 Ask AI</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+
+        html += `
+                </div>
+            </div>
+        `;
+    });
+
+    container.innerHTML = html;
+}
+
 // Display test summary and failures
 function displayTestResults(results) {
     // Display summary cards
@@ -1398,6 +1523,9 @@ function toggleFailure(failureId) {
 }
 
 // Populate test results table
+// Store table test data globally for sorting
+let tableTestData = [];
+
 function populateTestTable(results) {
     console.log('populateTestTable called with results:', results);
     const tbody = document.getElementById('testResultsTableBody');
@@ -1412,17 +1540,16 @@ function populateTestTable(results) {
     tableTitle.textContent = `Test Results Table - ${currentTestFolder}`;
 
     // Combine all test results (failures, errors, and skipped)
-    const allTests = [];
+    tableTestData = [];
 
     // Add failures and errors
     if (results.failures && results.failures.length > 0) {
         results.failures.forEach(test => {
-            allTests.push({
+            tableTestData.push({
                 test_name: test.test_name || 'Unknown',
                 class_name: test.class_name || 'Unknown',
-                status: test.failure_type === 'error' ? 'error' : 'failed',
-                error_message: test.error_message || '',
-                duration: test.duration || 0
+                component: test.component || 'Unknown',
+                status: test.failure_type === 'error' ? 'error' : 'failed'
             });
         });
     }
@@ -1430,27 +1557,35 @@ function populateTestTable(results) {
     // Add skipped tests
     if (results.skipped_tests && results.skipped_tests.length > 0) {
         results.skipped_tests.forEach(test => {
-            allTests.push({
+            tableTestData.push({
                 test_name: test.test_name || 'Unknown',
                 class_name: test.class_name || 'Unknown',
-                status: 'skipped',
-                error_message: test.error_message || '',
-                duration: test.duration || 0
+                component: test.component || 'Unknown',
+                status: 'skipped'
             });
         });
     }
 
-    console.log('Total tests to display in table:', allTests.length);
+    console.log('Total tests to display in table:', tableTestData.length);
 
-    if (allTests.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" class="loading">No failed or skipped tests found</td></tr>';
+    if (tableTestData.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="3" class="loading">No failed or skipped tests found</td></tr>';
         console.log('No tests to display - showing empty message');
         return;
     }
 
+    // Render the table with current sort
+    renderTableRows(tableTestData);
+    console.log('Table populated with', tableTestData.length, 'rows');
+}
+
+// Render table rows
+function renderTableRows(tests) {
+    const tbody = document.getElementById('testResultsTableBody');
+
     // Build table rows
     let html = '';
-    allTests.forEach((test, index) => {
+    tests.forEach((test, index) => {
         const statusClass = test.status === 'failed' ? 'status-failed' :
                            test.status === 'skipped' ? 'status-skipped' : 'status-error';
         const statusText = test.status === 'failed' ? 'Failed' :
@@ -1463,17 +1598,99 @@ function populateTestTable(results) {
         const fullTestPath = `${test.class_name}.${cleanTestName}`;
 
         html += `
-            <tr data-status="${test.status}">
+            <tr data-status="${test.status}" data-component="${escapeHtml(test.component)}">
+                <td class="component-cell">${escapeHtml(test.component)}</td>
                 <td>${escapeHtml(fullTestPath)}</td>
                 <td><span class="status-badge ${statusClass}">${statusText}</span></td>
-                <td>${escapeHtml(test.error_message)}</td>
-                <td class="duration-cell">${test.duration.toFixed(2)}s</td>
             </tr>
         `;
     });
 
     tbody.innerHTML = html;
-    console.log('Table populated with', allTests.length, 'rows');
+}
+
+// Sort table results
+function sortTableResults() {
+    const sortBy = document.getElementById('tableSortBySelect').value;
+
+    if (sortBy === 'default') {
+        // Default order - render as is
+        renderTableRows(tableTestData);
+    } else if (sortBy === 'component') {
+        // Group by component
+        renderTableGroupedByComponent();
+    } else if (sortBy === 'status') {
+        // Sort by status (failed > error > skipped)
+        const sorted = [...tableTestData].sort((a, b) => {
+            const statusOrder = { 'failed': 1, 'error': 2, 'skipped': 3 };
+            return statusOrder[a.status] - statusOrder[b.status];
+        });
+        renderTableRows(sorted);
+    }
+
+    // Re-apply filters after sorting
+    filterTableResults();
+}
+
+// Render table grouped by component
+function renderTableGroupedByComponent() {
+    const tbody = document.getElementById('testResultsTableBody');
+
+    // Group tests by component
+    const componentGroups = {};
+    tableTestData.forEach(test => {
+        const component = test.component || 'Unknown';
+        if (!componentGroups[component]) {
+            componentGroups[component] = [];
+        }
+        componentGroups[component].push(test);
+    });
+
+    // Sort component names alphabetically
+    const sortedComponents = Object.keys(componentGroups).sort();
+
+    let html = '';
+
+    // Render each component group
+    sortedComponents.forEach(component => {
+        const tests = componentGroups[component];
+        const failedCount = tests.filter(t => t.status === 'failed').length;
+        const errorCount = tests.filter(t => t.status === 'error').length;
+        const skippedCount = tests.filter(t => t.status === 'skipped').length;
+
+        // Component header row
+        html += `
+            <tr class="component-header-row">
+                <td colspan="3" class="component-header">
+                    <strong>📦 ${escapeHtml(component)}</strong>
+                    <span style="margin-left: 15px; font-weight: normal;">
+                        (${tests.length} total: ${failedCount} failed, ${errorCount} errors, ${skippedCount} skipped)
+                    </span>
+                </td>
+            </tr>
+        `;
+
+        // Render tests in this component
+        tests.forEach(test => {
+            const statusClass = test.status === 'failed' ? 'status-failed' :
+                               test.status === 'skipped' ? 'status-skipped' : 'status-error';
+            const statusText = test.status === 'failed' ? 'Failed' :
+                              test.status === 'skipped' ? 'Skipped' : 'Error';
+
+            const cleanTestName = test.test_name.replace(/\[.*?\]/g, '');
+            const fullTestPath = `${test.class_name}.${cleanTestName}`;
+
+            html += `
+                <tr data-status="${test.status}" data-component="${escapeHtml(test.component)}" class="component-test-row">
+                    <td class="component-cell">${escapeHtml(test.component)}</td>
+                    <td>${escapeHtml(fullTestPath)}</td>
+                    <td><span class="status-badge ${statusClass}">${statusText}</span></td>
+                </tr>
+            `;
+        });
+    });
+
+    tbody.innerHTML = html;
 }
 
 // Filter table results based on checkboxes
@@ -1496,6 +1713,29 @@ function filterTableResults() {
             row.classList.remove('hidden');
         } else {
             row.classList.add('hidden');
+        }
+    });
+
+    // Hide component header rows if all their tests are hidden (only in grouped view)
+    const componentHeaders = document.querySelectorAll('.component-header-row');
+    componentHeaders.forEach(header => {
+        let nextRow = header.nextElementSibling;
+        let hasVisibleTests = false;
+
+        // Check all test rows in this component group
+        while (nextRow && nextRow.classList.contains('component-test-row')) {
+            if (!nextRow.classList.contains('hidden')) {
+                hasVisibleTests = true;
+                break;
+            }
+            nextRow = nextRow.nextElementSibling;
+        }
+
+        // Hide header if no visible tests
+        if (hasVisibleTests) {
+            header.classList.remove('hidden');
+        } else {
+            header.classList.add('hidden');
         }
     });
 }
