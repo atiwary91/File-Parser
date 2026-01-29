@@ -174,7 +174,8 @@ async def discover_rhcert_files(request: DiscoverRequest):
     # Walk through extraction directory
     for root, dirs, files in os.walk(extract_path):
         for file_name in files:
-            if file_name.startswith('rhcert-results-') and file_name.endswith('.xml'):
+            # Match any rhcert XML file (rhcert-results, rhcert-multi, etc.)
+            if 'rhcert' in file_name.lower() and file_name.endswith('.xml'):
                 file_path = os.path.join(root, file_name)
                 rel_path = os.path.relpath(file_path, extract_path)
 

@@ -146,7 +146,10 @@ async function loadResults() {
         // Show RHOSO card if test results found
         if (data.has_rhoso_tests) {
             document.getElementById('rhosoCard').style.display = 'block';
-            document.getElementById('rhosoCount').textContent = data.rhoso_folders.length;
+            const rhosoCount = (data.rhoso_folders || []).length;
+            const rhcertCount = (data.rhcert_files || []).length;
+            const totalCount = rhosoCount + rhcertCount;
+            document.getElementById('rhosoCount').textContent = totalCount;
             document.getElementById('resultsTabBtn').style.display = 'block';
         }
 
@@ -260,7 +263,7 @@ async function viewFile(filePath) {
 
     // Check if it's a rhcert XML file (before trying to read)
     const ext = fileName.split('.').pop().toLowerCase();
-    const isRhcertXML = ext === 'xml' && fileName.includes('rhcert-results');
+    const isRhcertXML = ext === 'xml' && fileName.toLowerCase().includes('rhcert');
 
     // For rhcert XML, show extract interface immediately (don't try to load content)
     if (isRhcertXML) {
@@ -283,7 +286,21 @@ async function viewFile(filePath) {
             // Render based on file type
             renderFileContent(data.content, ext, content);
         } else {
-            content.innerHTML = `<div class="error-message">Error: ${data.error}<br>${data.message || ''}</div>`;
+            // Check if file is too large but can be extracted
+            if (response.status === 413 && data.can_extract) {
+                document.getElementById('viewerFileSize').textContent = data.size || 'Large file';
+
+                if (data.extract_type === 'rhcert') {
+                    // Show rhcert extraction interface
+                    renderRHCertXMLInterface(filePath, content);
+                } else if (data.extract_type === 'archive') {
+                    // Show nested archive extraction interface
+                    renderNestedArchiveInterface(filePath, data.size, content);
+                }
+            } else {
+                // Show regular error
+                content.innerHTML = `<div class="error-message">Error: ${data.error}<br>${data.message || ''}</div>`;
+            }
         }
     } catch (error) {
         content.innerHTML = `<div class="error-message">Failed to load file: ${error.message}</div>`;
@@ -378,6 +395,89 @@ async function extractRHCertAttachments(filePath) {
         status.innerHTML = `<div style="color: #f44336;">❌ Error: ${error.message}</div>`;
         btn.disabled = false;
         btn.textContent = '📦 Extract Embedded Files';
+    }
+}
+
+// Render nested archive extraction interface
+function renderNestedArchiveInterface(filePath, fileSize, container) {
+    container.className = 'file-viewer-content';
+
+    const fileName = filePath.split('/').pop();
+
+    const html = `
+        <div style="background: #e8f5e9; padding: 20px; border-radius: 8px; border-left: 4px solid #4caf50;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <div>
+                    <h3 style="margin: 0 0 8px 0; color: #2e7d32;">📦 Nested Archive File</h3>
+                    <p style="margin: 0; font-size: 0.95em; color: #666; line-height: 1.5;">
+                        This file is a compressed archive that can be extracted:<br>
+                        • File: <strong>${escapeHtml(fileName)}</strong><br>
+                        • Size: <strong>${fileSize}</strong>
+                    </p>
+                </div>
+            </div>
+            <div style="text-align: center; padding: 20px; background: white; border-radius: 4px;">
+                <button class="btn btn-primary" onclick="extractNestedArchive('${escapeHtml(filePath)}')"
+                        id="extractNestedBtn" style="padding: 12px 24px; font-size: 1.1em;">
+                    📂 Extract Archive Contents
+                </button>
+                <div id="nestedExtractionStatus" style="margin-top: 15px; display: none;"></div>
+            </div>
+            <div style="margin-top: 15px; padding: 12px; background: #fff3e0; border-radius: 4px; font-size: 0.9em; color: #e65100;">
+                <strong>ℹ️ Note:</strong> File is too large to preview in browser. Click the button above to extract its contents,
+                then browse the extracted files in the File Browser tree.
+            </div>
+        </div>
+    `;
+
+    container.innerHTML = html;
+}
+
+// Extract nested archive
+async function extractNestedArchive(filePath) {
+    const btn = document.getElementById('extractNestedBtn');
+    const status = document.getElementById('nestedExtractionStatus');
+
+    btn.disabled = true;
+    btn.textContent = '⏳ Extracting...';
+    status.style.display = 'block';
+    status.innerHTML = '<div style="color: #0066cc;">Extracting archive contents...</div>';
+
+    try {
+        const response = await fetch(`/api/extract-nested/${currentJobId}/${filePath}`, {
+            method: 'POST'
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            status.innerHTML = `
+                <div style="color: #4caf50;">
+                    ✅ <strong>Extraction Complete!</strong><br>
+                    • Extracted Files: ${data.extracted_files}<br>
+                    • Location: ${data.extraction_path}<br>
+                    <br>
+                    <strong>Files are now visible in the File Browser tree!</strong>
+                    Look for "nested_archives" folder.
+                </div>
+            `;
+            btn.textContent = '✅ Extracted';
+
+            // Reload tree to show new files
+            if (typeof loadTree === 'function') {
+                setTimeout(() => {
+                    loadTree();
+                }, 1000);
+            }
+        } else {
+            status.innerHTML = `<div style="color: #f44336;">❌ Extraction failed: ${data.message || data.error}</div>`;
+            btn.disabled = false;
+            btn.textContent = '📂 Extract Archive Contents';
+        }
+    } catch (error) {
+        status.innerHTML = `<div style="color: #f44336;">❌ Error: ${error.message}</div>`;
+        btn.disabled = false;
+        btn.textContent = '📂 Extract Archive Contents';
     }
 }
 

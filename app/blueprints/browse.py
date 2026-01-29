@@ -202,6 +202,14 @@ def get_summary(job_id):
         FileMetadata.name.like('rhoso%')
     ).all()
 
+    # Get rhcert files
+    rhcert_files = db_session.query(FileMetadata).filter(
+        FileMetadata.job_id == job_id,
+        FileMetadata.is_directory == False,
+        FileMetadata.name.like('%rhcert%'),
+        FileMetadata.extension == '.xml'
+    ).all()
+
     from app.utils.security import get_file_size_human
 
     return jsonify({
@@ -222,5 +230,6 @@ def get_summary(job_id):
             for f in largest_files
         ],
         'has_rhoso_tests': job.has_rhoso_tests,
-        'rhoso_folders': [f.relative_path for f in rhoso_folders]
+        'rhoso_folders': [f.relative_path for f in rhoso_folders],
+        'rhcert_files': [f.relative_path for f in rhcert_files]
     })

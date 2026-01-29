@@ -44,10 +44,27 @@ def read_file(job_id, file_path):
     # Check file size
     is_valid_size, size, size_error = check_file_size(full_path)
     if not is_valid_size:
+        # Check if this is a file that can be extracted even if too large to preview
+        file_lower = file_path.lower()
+        can_extract = False
+        extract_type = None
+
+        # Check if it's a rhcert XML file with embedded attachments
+        if file_lower.endswith('.xml') and ('rhcert' in file_lower or 'rhcert-results' in file_lower):
+            can_extract = True
+            extract_type = 'rhcert'
+        # Check if it's a nested archive
+        elif any(file_lower.endswith(ext) for ext in ['.tar', '.tar.gz', '.tgz', '.tar.bz2', '.tar.xz', '.zip', '.gz', '.bz2', '.xz']):
+            can_extract = True
+            extract_type = 'archive'
+
         return jsonify({
             'error': 'File too large for preview',
             'size': get_file_size_human(size),
-            'message': size_error
+            'message': size_error,
+            'can_extract': can_extract,
+            'extract_type': extract_type,
+            'file_path': file_path
         }), 413
 
     # Check if binary
@@ -107,6 +124,93 @@ def download_file(job_id, file_path):
     return send_from_directory(directory, filename, as_attachment=True)
 
 
+@viewer_bp.route('/extract-nested/<job_id>/<path:file_path>', methods=['POST'])
+def extract_nested_archive(job_id, file_path):
+    """
+    Extract nested archive file (tar, zip, gz, etc.)
+
+    Args:
+        job_id: UUID of the job
+        file_path: Relative path to archive file
+    """
+    # Validate job exists
+    job = db_session.query(Job).filter_by(id=job_id).first()
+    if not job:
+        return jsonify({'error': 'Job not found'}), 404
+
+    # Security check
+    is_safe, full_path, error = check_file_access(job_id, file_path)
+    if not is_safe:
+        return jsonify({'error': error}), 403 if 'denied' in error.lower() else 404
+
+    # Check if file is an archive
+    file_lower = file_path.lower()
+    if not any(file_lower.endswith(ext) for ext in ['.tar', '.tar.gz', '.tgz', '.tar.bz2', '.tar.xz', '.zip', '.gz', '.bz2', '.xz']):
+        return jsonify({'error': 'Not a supported archive format'}), 400
+
+    try:
+        # Create extraction subdirectory
+        base_name = os.path.basename(file_path)
+        # Remove extension to create folder name
+        for ext in ['.tar.gz', '.tar.bz2', '.tar.xz']:
+            if base_name.endswith(ext):
+                folder_name = base_name[:-len(ext)] + '_extracted'
+                break
+        else:
+            # Single extension
+            folder_name = os.path.splitext(base_name)[0] + '_extracted'
+
+        extraction_dir = os.path.join(settings.EXTRACT_FOLDER, job_id, 'nested_archives', folder_name)
+        os.makedirs(extraction_dir, exist_ok=True)
+
+        # Extract using the extraction service
+        from app.services.extraction import ExtractionService
+        extraction_service = ExtractionService()
+
+        # Use the same extraction logic as main uploads
+        file_ext = base_name.rsplit('.', 1)[1].lower() if '.' in base_name else ''
+
+        logger.info(f"Extracting nested archive: {file_path} to {extraction_dir}")
+
+        if file_ext == 'zip':
+            extraction_service._extract_zip(job_id, full_path, extraction_dir)
+        elif file_ext in ['tar', 'gz', 'bz2', 'xz', 'tgz'] or 'tar' in base_name:
+            # Try as compressed file first, then tar
+            if file_ext in ['gz', 'bz2', 'xz'] and not any(base_name.endswith(ext) for ext in ['.tar.gz', '.tar.bz2', '.tar.xz']):
+                try:
+                    if not extraction_service._extract_compressed_file(job_id, full_path, extraction_dir, base_name, file_ext):
+                        extraction_service._extract_tar(job_id, full_path, extraction_dir, base_name, file_ext)
+                except Exception:
+                    extraction_service._extract_tar(job_id, full_path, extraction_dir, base_name, file_ext)
+            else:
+                extraction_service._extract_tar(job_id, full_path, extraction_dir, base_name, file_ext)
+        else:
+            return jsonify({'error': f'Unsupported format: {file_ext}'}), 400
+
+        # Count extracted files
+        extracted_count = sum(1 for _ in os.walk(extraction_dir) for _ in _[2])
+
+        # Index extracted files
+        from app.services.indexing import indexing_service
+        indexing_service.index_directory(job_id, extraction_dir, f'nested_archives/{folder_name}')
+
+        return jsonify({
+            'success': True,
+            'message': 'Archive extracted successfully',
+            'extraction_path': f'nested_archives/{folder_name}',
+            'extracted_files': extracted_count
+        })
+
+    except Exception as e:
+        logger.error(f"Error extracting nested archive: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'error': 'Extraction failed',
+            'message': str(e)
+        }), 500
+
+
 @viewer_bp.route('/extract-rhcert/<job_id>/<path:file_path>', methods=['POST'])
 def extract_rhcert_attachments(job_id, file_path):
     """
@@ -130,9 +234,10 @@ def extract_rhcert_attachments(job_id, file_path):
     if not file_path.lower().endswith('.xml'):
         return jsonify({'error': 'Not an XML file'}), 400
 
-    # Check if it's a rhcert file
-    if 'rhcert-results' not in os.path.basename(file_path).lower():
-        return jsonify({'error': 'Not a rhcert results file'}), 400
+    # Check if it's a rhcert file (accepts rhcert-results, rhcert-multi, etc.)
+    file_basename = os.path.basename(file_path).lower()
+    if 'rhcert' not in file_basename:
+        return jsonify({'error': 'Not a rhcert file'}), 400
 
     try:
         # Get extraction base directory (same as job extraction directory)

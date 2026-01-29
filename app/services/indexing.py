@@ -38,7 +38,8 @@ class IndexingService:
             'files_indexed': 0,
             'directories_indexed': 0,
             'total_size': 0,
-            'rhoso_folders': []
+            'rhoso_folders': [],
+            'rhcert_files': []
         }
 
         try:
@@ -88,6 +89,10 @@ class IndexingService:
                         file_size = os.path.getsize(file_path)
                         stats['total_size'] += file_size
 
+                        # Check if this is a rhcert XML file
+                        if filename.lower().endswith('.xml') and 'rhcert' in filename.lower():
+                            stats['rhcert_files'].append(rel_path)
+
                         # OPTIMIZATION: Skip content preview - not needed for browsing
                         # This saves thousands of file reads
 
@@ -126,14 +131,15 @@ class IndexingService:
                 job.total_files = stats['files_indexed']
                 job.total_directories = stats['directories_indexed']
                 job.total_size = stats['total_size']
-                job.has_rhoso_tests = len(stats['rhoso_folders']) > 0
+                # Set has_rhoso_tests to True if either rhoso folders or rhcert files are found
+                job.has_rhoso_tests = len(stats['rhoso_folders']) > 0 or len(stats['rhcert_files']) > 0
                 job.status = 'completed'
                 job.progress = 100
                 job.message = 'Extraction completed'
                 job.updated_at = datetime.utcnow()
 
             db_session.commit()
-            logger.info(f"FAST INDEXED {stats['files_indexed']} files and {stats['directories_indexed']} directories for job {job_id}")
+            logger.info(f"FAST INDEXED {stats['files_indexed']} files and {stats['directories_indexed']} directories for job {job_id} (rhoso: {len(stats['rhoso_folders'])}, rhcert: {len(stats['rhcert_files'])})")
 
         except Exception as e:
             logger.error(f"Error indexing job {job_id}: {e}", exc_info=True)
@@ -141,6 +147,114 @@ class IndexingService:
             stats['error'] = str(e)
 
         return stats
+
+    def index_directory(self, job_id, directory_path, relative_base_path=''):
+        """
+        Index files in a specific directory (used for nested extractions)
+
+        Args:
+            job_id: UUID of the job
+            directory_path: Absolute path to directory to index
+            relative_base_path: Base path for relative paths in database
+
+        Returns:
+            int: Number of files indexed
+        """
+        if not os.path.exists(directory_path):
+            logger.error(f"Directory not found: {directory_path}")
+            return 0
+
+        indexed_count = 0
+        batch_items = []
+        batch_size = 500
+
+        try:
+            for root, dirs, files in os.walk(directory_path):
+                # Index directories
+                for dir_name in dirs:
+                    dir_path = os.path.join(root, dir_name)
+                    # Calculate relative path from the base directory
+                    rel_from_dir = os.path.relpath(dir_path, directory_path)
+                    rel_path = os.path.join(relative_base_path, rel_from_dir) if relative_base_path else rel_from_dir
+                    parent_path = os.path.dirname(rel_path) if rel_path != '.' else None
+
+                    # Check if already indexed
+                    existing = db_session.query(FileMetadata).filter_by(
+                        job_id=job_id,
+                        relative_path=rel_path
+                    ).first()
+
+                    if not existing:
+                        metadata = FileMetadata(
+                            job_id=job_id,
+                            name=dir_name,
+                            path=dir_path,
+                            relative_path=rel_path,
+                            size=None,
+                            extension=None,
+                            is_directory=True,
+                            parent_path=parent_path,
+                            content_preview=None
+                        )
+                        batch_items.append(metadata)
+                        indexed_count += 1
+
+                    if len(batch_items) >= batch_size:
+                        db_session.bulk_save_objects(batch_items)
+                        db_session.commit()
+                        batch_items = []
+
+                # Index files
+                for filename in files:
+                    file_path = os.path.join(root, filename)
+                    rel_from_dir = os.path.relpath(file_path, directory_path)
+                    rel_path = os.path.join(relative_base_path, rel_from_dir) if relative_base_path else rel_from_dir
+                    parent_path = os.path.dirname(rel_path) if rel_path != '.' else None
+
+                    try:
+                        # Check if already indexed
+                        existing = db_session.query(FileMetadata).filter_by(
+                            job_id=job_id,
+                            relative_path=rel_path
+                        ).first()
+
+                        if not existing:
+                            file_size = os.path.getsize(file_path)
+
+                            metadata = FileMetadata(
+                                job_id=job_id,
+                                name=filename,
+                                path=file_path,
+                                relative_path=rel_path,
+                                size=file_size,
+                                extension=get_file_extension(filename),
+                                is_directory=False,
+                                parent_path=parent_path,
+                                content_preview=None
+                            )
+                            batch_items.append(metadata)
+                            indexed_count += 1
+
+                        if len(batch_items) >= batch_size:
+                            db_session.bulk_save_objects(batch_items)
+                            db_session.commit()
+                            batch_items = []
+
+                    except (PermissionError, OSError) as e:
+                        logger.warning(f"Skipped indexing {file_path}: {e}")
+
+            # Commit remaining items
+            if batch_items:
+                db_session.bulk_save_objects(batch_items)
+                db_session.commit()
+
+            logger.info(f"Indexed {indexed_count} new files from {directory_path}")
+
+        except Exception as e:
+            logger.error(f"Error indexing directory {directory_path}: {e}", exc_info=True)
+            db_session.rollback()
+
+        return indexed_count
 
     def _get_content_preview(self, file_path, max_chars=500):
         """
